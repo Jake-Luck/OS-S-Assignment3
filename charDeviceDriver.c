@@ -17,7 +17,7 @@ static struct file_operations fops = {
 
 #define DEVICE_NAME "chardev"
 #define MAX_MESSAGES 1000
-#define MAX_MESSAGE_BYTES 4096;
+#define MAX_MESSAGE_BYTES 4096
 DEFINE_MUTEX(lock);
 
 static int Major;
@@ -32,7 +32,7 @@ int init_module(void) {
 	  printk(KERN_ALERT "Registering char device failed with %d\n", Major);
 	  return Major;
 	}
-    if ((messageQueue = kmalloc(MAX_MESSAGES * sizeof(char)) GFP_KERNEL)) == NULL) {
+    if ((messageQueue = kmalloc(MAX_MESSAGES * sizeof(char), GFP_KERNEL)) == NULL) {
         printk(KERN_INFO "Memory allocation failed");
         return -EFAULT;
     }
@@ -50,12 +50,12 @@ void cleanup_module(void)
 	/*  Unregister the device */
 	unregister_chrdev(Major, DEVICE_NAME);
     for (head = 0; head < MAX_MESSAGES; head++) {
-        kfree(messageQueue[head]);
+        kfree(&messageQueue[head]);
     }
     kfree(messageQueue);
 }
 
-static int device_open(struct inode *, struct file *) {
+static int device_open(struct inode *inode, struct file *file) {
     mutex_lock(&lock);
     if (Device_Open == 0) {
         mutex_unlock(&lock);
@@ -69,7 +69,7 @@ static int device_open(struct inode *, struct file *) {
     return 0;
 }
 
-static int device_release(struct inode *, struct file *) {
+static int device_release(struct inode *inode, struct file *file) {
     mutex_lock(&lock);
     Device_Open = 0;
     mutex_unlock(&lock);
@@ -78,48 +78,60 @@ static int device_release(struct inode *, struct file *) {
     return 0;
 }
 
-static ssize_t device_read(struct file *filp, char *buffer, size_t bufferLength, loff_t *) {
+static ssize_t device_read(struct file *filp, char *buffer, size_t bufferLength, loff_t *offset) {
     mutex_lock(&lock);
     if(queueLength == 0) {
         mutex_unlock(&lock);
-        printk(KERN_INFO "No messages to read"\n);
+        printk(KERN_INFO "No messages to read\n");
+        return -EAGAIN;
     }
-    if (copy_to_user(buffer, *(messageQueue + head), size_of(*(messageQueue + head))) > 0)
-    {
+    if (copy_to_user(buffer, messageQueue + head, bufferLength) > 0) {
         mutex_unlock(&lock);
-        printk(KERN_INFO "Copy went wrong\n")
+        printk(KERN_INFO "Copy went wrong\n");
+        return -EFAULT;
     }
-    kfree(messageQueue + head)
-    head = (head + 1) % MAX_MESSAGES
-    queue--;
+    kfree(messageQueue + head);
+    head = (head + 1) % MAX_MESSAGES;
+    queueLength--;
     mutex_unlock(&lock);
-    
+    return bufferLength;
 }
 
-static ssize_t device_write(struct file *filp, const char *buffer, size_t bufferLength, loff_t *) {
+static ssize_t device_write(struct file *filp, const char *buffer, size_t bufferLength, loff_t *offset) {
     char *messageWritten;
-    int messageLength = bufferLength + sizeof(char);
+    int messageLength;
+    printk(KERN_INFO "Test: initialised messageWritten\n");
+    messageLength = bufferLength + sizeof(char);
+    printk(KERN_INFO "Test: initialised messageLength\n");
     if (messageLength > MAX_MESSAGE_BYTES) {
         printk(KERN_INFO "Message too long\n");
         return -EINVAL;
     }
+    printk(KERN_INFO "Test: Message not too long\n");
     if((messageWritten = kmalloc(messageLength, GFP_KERNEL)) == NULL) {
         printk(KERN_INFO "Memory allocation failed\n");
         return -EFAULT;
     }
+    printk(KERN_INFO "Test: Memory allocated\n");
     mutex_lock(&lock);
-    if (queueLength => 1000) {
-        mutex_unlock(lock);
+    printk(KERN_INFO "Test: Mutex locked\n");
+    if (queueLength >= 1000) {
+        mutex_unlock(&lock);
         printk(KERN_INFO "Message queue full\n");
         return -EBUSY;
     }
-    if(copy_from_user(messagewritten, buffer length) > 0) {
+    printk(KERN_INFO "Test: Queue not full\n");
+    if(copy_from_user(messageWritten, buffer, bufferLength) > 0) {
         mutex_unlock(&lock);
         printk(KERN_INFO "Copy went wrong\n");
-        return -EFAULT
+        return -EFAULT;
     }
-    *(messageQueue + ((head + queueLength) % MAX_MESSAGES)) = messsageWritten;
+    printk(KERN_INFO "Test: Copy successful\n");
+    *(messageQueue + ((head + queueLength) % MAX_MESSAGES)) = *messageWritten;
+    printk(KERN_INFO "Test: Message placed in queue\n");
     queueLength++;
+    printk(KERN_INFO "Test: Queue length incremented\n");
     mutex_unlock(&lock);
+    printk(KERN_INFO "Test: Mutex unlocked\n");
     return bufferLength;
 }
