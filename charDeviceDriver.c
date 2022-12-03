@@ -57,7 +57,8 @@ void cleanup_module(void)
 
 static int device_open(struct inode *inode, struct file *file) {
     mutex_lock(&lock);
-    if (Device_Open == 0) {
+    if (Device_Open == 1) {
+        printk(KERN_INFO "Device already open");
         mutex_unlock(&lock);
         return -EBUSY;
     }
