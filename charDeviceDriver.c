@@ -49,56 +49,52 @@ void cleanup_module(void)
 {
 	/*  Unregister the device */
 	unregister_chrdev(Major, DEVICE_NAME);
-    for (head = 0; head < MAX_MESSAGES; head++) {
-        kfree(messageQueue[head]);
+    for (queueLength; queueLength > 0; queueLength--) {
+        kfree(messageQueue + ((head+queueLength) % MAX_MESSAGES));
     }
     kfree(messageQueue);
 }
 
 static int device_open(struct inode *inode, struct file *file) {
     mutex_lock(&lock);
-    if (Device_Open == 1) {
-        mutex_unlock(&lock);
-        return -EBUSY;
-    }
-    Device_Open = 1;
+        if (Device_Open == 1) {
+            mutex_unlock(&lock);
+            return -EBUSY;
+        }
+        Device_Open = 1;
     mutex_unlock(&lock);
     
-    printk(KERN_INFO "Device has been opened\n");
     try_module_get(THIS_MODULE);
     return 0;
 }
 
 static int device_release(struct inode *inode, struct file *file) {
     mutex_lock(&lock);
-    Device_Open = 0;
+        Device_Open = 0;
     mutex_unlock(&lock);
 
-    printk(KERN_INFO "Device has been closed\n");
     module_put(THIS_MODULE);
     return 0;
 }
 
 static ssize_t device_read(struct file *filp, char *buffer, size_t bufferLength, loff_t *offset) {
     mutex_lock(&lock);
-    printk(KERN_INFO "Test: Locked\n");
-    if(queueLength == 0) {
-        mutex_unlock(&lock);
-        printk(KERN_INFO "No messages to read\n");
-        return -EAGAIN;
-    }
-    printk(KERN_INFO "Test: Queue not empty\n");
-    if (copy_to_user(buffer, messageQueue + head, bufferLength) > 0) {
-        mutex_unlock(&lock);
-        printk(KERN_INFO "Copy went wrong\n");
-        return -EFAULT;
-    }
-    printk(KERN_INFO "Test: Message read\n");
-    kfree(messageQueue[head]);
-    printk(KERN_INFO "First queueLength = %d", queueLength);
-    queueLength--;
-    printk(KERN_INFO "Second queueLength = %d", queueLength);
+        if(queueLength == 0) {
+            mutex_unlock(&lock);
+            printk(KERN_ALERT "No messages to read\n");
+            return -EAGAIN;
+        }
+        if(strlen(messageQueue+head) + 1 < bufferLength) bufferLength = strlen(messageQueue+head) + 1;
+        if (copy_to_user(buffer, messageQueue + head, bufferLength) > 0) {
+            mutex_unlock(&lock);
+            printk(KERN_ALERT "Copy went wrong\n");
+            return -EFAULT;
+        }
+        queueLength--;
+        kfree(messageQueue+head);
+        head++;
     mutex_unlock(&lock);
+
     return bufferLength;
 }
 
@@ -107,28 +103,30 @@ static ssize_t device_write(struct file *filp, const char *buffer, size_t buffer
     int messageLength;
     messageLength = bufferLength + sizeof(char);
     if (messageLength > MAX_MESSAGE_BYTES) {
-        printk(KERN_INFO "Message too long\n");
+        printk(KERN_ALERT "Message too long\n");
         return -EINVAL;
     }
     if((messageWritten = kmalloc(messageLength, GFP_KERNEL)) == NULL) {
-        printk(KERN_INFO "Memory allocation failed\n");
+        printk(KERN_ALERT "Memory allocation failed\n");
         return -EFAULT;
     }
+
     mutex_lock(&lock);
-    if (queueLength >= 1000) {
-        mutex_unlock(&lock);
-        printk(KERN_INFO "Message queue full\n");
-        return -EBUSY;
-    }
-    if(copy_from_user(messageWritten, buffer, bufferLength) > 0) {
-        mutex_unlock(&lock);
-        printk(KERN_INFO "Copy went wrong\n");
-        return -EFAULT;
-    }
-    messageWritten[bufferLength] = '\0';
-    *(messageQueue + ((head + queueLength) % MAX_MESSAGES)) = *messageWritten;
-    kfree(messageWritten);
-    queueLength++;
+        if (queueLength >= 1000) {
+            mutex_unlock(&lock);
+            printk(KERN_ALERT "Message queue full\n");
+            return -EBUSY;
+        }
+        if(copy_from_user(messageWritten, buffer, bufferLength) > 0) {
+            mutex_unlock(&lock);
+            printk(KERN_ALERT "Copy went wrong\n");
+            return -EFAULT;
+        }
+        messageWritten[bufferLength] = '\0';
+        *(messageQueue + ((head + queueLength) % MAX_MESSAGES)) = *messageWritten;
+        kfree(messageWritten);
+        queueLength++;
     mutex_unlock(&lock);
+
     return bufferLength;
 }
