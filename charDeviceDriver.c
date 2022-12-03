@@ -21,7 +21,6 @@ static struct file_operations fops = {
 DEFINE_MUTEX(lock);
 
 static int Major;
-static int Device_Open = 0;
 static char* messageQueue;
 static int head = 0;
 static int queueLength = 0;
@@ -56,24 +55,12 @@ void cleanup_module(void)
 }
 
 static int device_open(struct inode *inode, struct file *file) {
-    mutex_lock(&lock);
-    if (Device_Open == 0) {
-        mutex_unlock(&lock);
-        return -EBUSY;
-    }
-    Device_Open = 1;
-    mutex_unlock(&lock);
-    
     printk(KERN_INFO "Device has been opened\n");
     try_module_get(THIS_MODULE);
     return 0;
 }
 
 static int device_release(struct inode *inode, struct file *file) {
-    mutex_lock(&lock);
-    Device_Open = 0;
-    mutex_unlock(&lock);
-
     module_put(THIS_MODULE);
     return 0;
 }
