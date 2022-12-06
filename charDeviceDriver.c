@@ -32,7 +32,7 @@ int init_module(void) {
 	  printk(KERN_ALERT "Registering char device failed with %d\n", Major);
 	  return Major;
 	}
-    if ((messageQueue = kmalloc(MAX_MESSAGES * sizeof(char), GFP_KERNEL)) == NULL) {
+    if ((messageQueue = (char**) kmalloc(MAX_MESSAGES * sizeof(char*), GFP_KERNEL)) == NULL) {
         printk(KERN_INFO "Memory allocation failed");
         return -EFAULT;
     }
@@ -49,8 +49,8 @@ void cleanup_module(void)
 {
 	/*  Unregister the device */
 	unregister_chrdev(Major, DEVICE_NAME);
-    for (queueLength; queueLength > 0; queueLength--) {
-        kfree(messageQueue + ((head+queueLength) % MAX_MESSAGES));
+    for (queueLength; queueLength >= 0; queueLength--) {
+        kfree(*(messageQueue + ((head+queueLength) % MAX_MESSAGES)));
     }
     kfree(messageQueue);
 }
@@ -91,7 +91,7 @@ static ssize_t device_read(struct file *filp, char *buffer, size_t bufferLength,
             return -EFAULT;
         }
         queueLength--;
-        kfree(messageQueue+head);
+        kfree(*(messageQueue+head));
         head++;
     mutex_unlock(&lock);
 
@@ -99,8 +99,7 @@ static ssize_t device_read(struct file *filp, char *buffer, size_t bufferLength,
 }
 
 static ssize_t device_write(struct file *filp, const char *buffer, size_t bufferLength, loff_t *offset) {
-    int messageLength;
-    messageLength = bufferLength + sizeof(char);
+    int messageLength = bufferLength + sizeof(char);
     if (messageLength > MAX_MESSAGE_BYTES) {
         printk(KERN_ALERT "Message too long\n");
         return -EINVAL;
